@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SmartSplit - Shared Expense Manager</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 min-h-screen p-6 font-sans">
+    <div class="max-w-5xl mx-auto space-y-6">
+        
+        <!-- Header -->
+        <header class="bg-indigo-600 text-white p-6 rounded-xl shadow-lg flex justify-between items-center">
+            <div>
+                <h1 class="text-3xl font-bold">💳 SmartSplit</h1>
+                <p class="text-indigo-200 text-sm mt-1">Student Expense & Shared Subscription Manager</p>
+            </div>
+            <button onclick="loadDashboard()" class="bg-indigo-500 hover:bg-indigo-700 px-4 py-2 rounded-lg text-sm font-semibold transition">
+                🔄 Refresh Data
+            </button>
+        </header>
+
+        <!-- Top Row: Forms -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            
+            <!-- User Creation Form -->
+            <div class="bg-white p-6 rounded-xl shadow-md border border-gray-200">
+                <h2 class="text-xl font-bold text-gray-800 mb-4">👤 Add Roommate</h2>
+                <form id="userForm" class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Name</label>
+                        <input type="text" id="userName" required class="w-full mt-1 p-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Email</label>
+                        <input type="email" id="userEmail" required class="w-full mt-1 p-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none">
+                    </div>
+                    <button type="submit" class="w-full bg-indigo-600 text-white py-2 rounded-lg font-semibold hover:bg-indigo-700 transition">
+                        Add User
+                    </button>
+                </form>
+            </div>
+
+            <!-- Expense Creation Form -->
+            <div class="bg-white p-6 rounded-xl shadow-md border border-gray-200">
+                <h2 class="text-xl font-bold text-gray-800 mb-4">🧾 Log Shared Expense</h2>
+                <form id="expenseForm" class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Title / Description</label>
+                        <input type="text" id="expenseTitle" placeholder="e.g. Wi-Fi, Grocery" required class="w-full mt-1 p-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Amount (₹)</label>
+                        <input type="number" id="expenseAmount" step="0.01" required class="w-full mt-1 p-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Paid By</label>
+                        <select id="expensePayer" required class="w-full mt-1 p-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none">
+                            <option value="">Select User</option>
+                        </select>
+                    </div>
+                    <button type="submit" class="w-full bg-green-600 text-white py-2 rounded-lg font-semibold hover:bg-green-700 transition">
+                        Log Expense
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Middle Row: Balances & Simplified Settlements -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            
+            <!-- Individual Net Balances -->
+            <div class="bg-white p-6 rounded-xl shadow-md border border-gray-200">
+                <h2 class="text-xl font-bold text-gray-800 mb-4">📊 Individual Net Balances</h2>
+                <div id="balancesList" class="space-y-3">
+                    <p class="text-gray-500 text-sm">Loading balances...</p>
+                </div>
+            </div>
+
+            <!-- Simplified Settlement Plan -->
+            <div class="bg-white p-6 rounded-xl shadow-md border border-gray-200">
+                <h2 class="text-xl font-bold text-gray-800 mb-4">🤝 Optimized Settlements</h2>
+                <div id="settlementsList" class="space-y-3">
+                    <p class="text-gray-500 text-sm">Loading settlement transactions...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bottom Row: Expense Log History -->
+        <div class="bg-white p-6 rounded-xl shadow-md border border-gray-200">
+            <h2 class="text-xl font-bold text-gray-800 mb-4">📜 Shared Expenses History</h2>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="bg-gray-100 text-gray-600 text-sm border-b">
+                            <th class="p-3">ID</th>
+                            <th class="p-3">Title</th>
+                            <th class="p-3">Amount</th>
+                            <th class="p-3">Paid By</th>
+                        </tr>
+                    </thead>
+                    <tbody id="expensesTableBody">
+                        <tr><td colspan="4" class="p-3 text-gray-500 text-sm text-center">No expenses recorded yet.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- JavaScript to Interface with FastAPI Endpoints -->
+    <script>
+        const API_URL = "http://127.0.0.1:8000";
+
+        async function fetchUsers() {
+            const res = await fetch(`${API_URL}/users/`);
+            const users = await res.json();
+            
+            const payerSelect = document.getElementById("expensePayer");
+            payerSelect.innerHTML = '<option value="">Select User</option>';
+            
+            users.forEach(u => {
+                const opt = document.createElement("option");
+                opt.value = u.id;
+                opt.textContent = `${u.name} (${u.email})`;
+                payerSelect.appendChild(opt);
+            });
+        }
+
+        async function fetchBalances() {
+            const res = await fetch(`${API_URL}/settlements/balances/`);
+            const balances = await res.json();
+            const container = document.getElementById("balancesList");
+            container.innerHTML = "";
+
+            if (balances.length === 0) {
+                container.innerHTML = '<p class="text-gray-500 text-sm">No users registered yet.</p>';
+                return;
+            }
+
+            balances.forEach(b => {
+                const isPositive = b.net_balance >= 0;
+                const colorClass = isPositive ? "text-green-600 bg-green-50" : "text-red-600 bg-red-50";
+                const sign = isPositive ? "+" : "";
+                
+                container.innerHTML += `
+                    <div class="flex justify-between items-center p-3 rounded-lg ${colorClass} font-medium">
+                        <span>${b.name}</span>
+                        <span>${sign}₹${b.net_balance.toFixed(2)}</span>
+                    </div>
+                `;
+            });
+        }
+
+        async function fetchSettlements() {
+            const res = await fetch(`${API_URL}/settlements/simplify/`);
+            const settlements = await res.json();
+            const container = document.getElementById("settlementsList");
+            container.innerHTML = "";
+
+            if (settlements.length === 0) {
+                container.innerHTML = '<p class="text-gray-500 text-sm">All debts settled! No payments required.</p>';
+                return;
+            }
+
+            settlements.forEach(s => {
+                container.innerHTML += `
+                    <div class="flex justify-between items-center p-3 rounded-lg bg-indigo-50 text-indigo-900 border border-indigo-100 font-medium text-sm">
+                        <span><strong>${s.payer_name}</strong> pays <strong>${s.payee_name}</strong></span>
+                        <span class="text-indigo-700 font-bold">₹${s.amount.toFixed(2)}</span>
+                    </div>
+                `;
+            });
+        }
+
+        async function fetchExpenses() {
+            const res = await fetch(`${API_URL}/expenses/`);
+            const expenses = await res.json();
+            const tbody = document.getElementById("expensesTableBody");
+            tbody.innerHTML = "";
+
+            if (expenses.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" class="p-3 text-gray-500 text-sm text-center">No expenses recorded yet.</td></tr>';
+                return;
+            }
+
+            expenses.forEach(e => {
+                tbody.innerHTML += `
+                    <tr class="border-b hover:bg-gray-50 text-sm text-gray-700">
+                        <td class="p-3">#${e.id}</td>
+                        <td class="p-3 font-semibold">${e.title}</td>
+                        <td class="p-3 text-green-700 font-semibold">₹${e.amount.toFixed(2)}</td>
+                        <td class="p-3">${e.payer ? e.payer.name : 'Unknown'}</td>
+                    </tr>
+                `;
+            });
+        }
+
+        async function loadDashboard() {
+            await fetchUsers();
+            await fetchBalances();
+            await fetchSettlements();
+            await fetchExpenses();
+        }
+
+        document.getElementById("userForm").addEventListener("submit", async (e) => {
+            e.preventDefault();
+            const name = document.getElementById("userName").value;
+            const email = document.getElementById("userEmail").value;
+
+            const res = await fetch(`${API_URL}/users/`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name, email })
+            });
+
+            if (res.ok) {
+                document.getElementById("userForm").reset();
+                loadDashboard();
+            } else {
+                alert("Failed to add user. Email may already be registered.");
+            }
+        });
+
+        document.getElementById("expenseForm").addEventListener("submit", async (e) => {
+            e.preventDefault();
+            const title = document.getElementById("expenseTitle").value;
+            const amount = parseFloat(document.getElementById("expenseAmount").value);
+            const payer_id = parseInt(document.getElementById("expensePayer").value);
+
+            const res = await fetch(`${API_URL}/expenses/`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ title, amount, payer_id })
+            });
+
+            if (res.ok) {
+                document.getElementById("expenseForm").reset();
+                loadDashboard();
+            } else {
+                alert("Failed to add expense.");
+            }
+        });
+
+        window.onload = loadDashboard;
+    </script>
+</body>
+</html>

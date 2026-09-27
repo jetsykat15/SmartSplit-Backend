@@ -1,4 +1,5 @@
 from fastapi import FastAPI, Depends, HTTPException
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from typing import List
 
@@ -9,13 +10,14 @@ from database import engine, get_db
 # Automatically create all tables in expenses.db
 models.Base.metadata.create_all(bind=engine)
 
+
 app = FastAPI(title="SmartSplit - Expense Manager")
 
-@app.get("/")
-def home():
-    return {"message": "SmartSplit backend and database are live!"}
+@app.get("/", response_class=FileResponse)
+def read_root():
+    return FileResponse("templates/index.html")
 
-
+# ==================== USER ROUTES ====================
 # ==================== USER ROUTES ====================
 
 @app.post("/users/", response_model=schemas.UserResponse)

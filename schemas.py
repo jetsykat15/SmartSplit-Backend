@@ -1,43 +1,55 @@
 from pydantic import BaseModel
 from typing import List, Optional
+from datetime import datetime
 
-# --- USER SCHEMAS ---
-class UserCreate(BaseModel):
+class UserBase(BaseModel):
     name: str
     email: str
 
-class UserResponse(BaseModel):
+class UserCreate(UserBase):
+    pass
+
+class UserResponse(UserBase):
     id: int
-    name: str
-    email: str
-
     class Config:
         from_attributes = True
 
+class SplitCreate(BaseModel):
+    user_id: int
+    amount_owed: float
 
-# --- EXPENSE SCHEMAS ---
+class SplitResponse(BaseModel):
+    user_id: int
+    amount_owed: float
+    class Config:
+        from_attributes = True
+
 class ExpenseCreate(BaseModel):
     title: str
     amount: float
-    payer_id: int  # ID of the user who paid the bill
+    category: Optional[str] = "General"
+    payer_id: int
+    splits: Optional[List[SplitCreate]] = None
 
 class ExpenseResponse(BaseModel):
     id: int
     title: str
     amount: float
+    category: str
+    created_at: datetime
     payer_id: int
-    payer: UserResponse  # Includes full details of who paid
+    payer: UserResponse
+    splits: List[SplitResponse] = []
 
     class Config:
         from_attributes = True
 
-
-# --- SETTLEMENT SCHEMA ---
 class BalanceResponse(BaseModel):
     user_id: int
     name: str
-    net_balance: float  # Positive = Owed money, Negative = Owes money
-class DebtSettlementResponse(BaseModel):
+    net_balance: float
+
+class SettlementResponse(BaseModel):
     payer_id: int
     payer_name: str
     payee_id: int

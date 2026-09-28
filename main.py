@@ -1,23 +1,29 @@
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.responses import FileResponse
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from typing import List
 
-import models
-import schemas
+import models, schemas
 from database import engine, get_db
 
-# Automatically create all tables in expenses.db
 models.Base.metadata.create_all(bind=engine)
 
+app = FastAPI(title="SmartSplit - Expense Manager API")
 
-app = FastAPI(title="SmartSplit - Expense Manager")
+# 1. Enable CORS for React Frontend (runs on localhost:5173 / localhost:3000)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.get("/", response_class=FileResponse)
 def read_root():
     return FileResponse("templates/index.html")
 
-# ==================== USER ROUTES ====================
 # ==================== USER ROUTES ====================
 
 @app.post("/users/", response_model=schemas.UserResponse)
@@ -36,105 +42,124 @@ def create_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
 def get_all_users(db: Session = Depends(get_db)):
     return db.query(models.User).all()
 
-
 # ==================== EXPENSE ROUTES ====================
 
 @app.post("/expenses/", response_model=schemas.ExpenseResponse)
 def create_expense(expense: schemas.ExpenseCreate, db: Session = Depends(get_db)):
-    # Check if the payer exists
     payer = db.query(models.User).filter(models.User.id == expense.payer_id).first()
     if not payer:
-        raise HTTPException(status_code=440, detail="Payer user ID not found")
-    
+        raise HTTPException(status_code=404, detail="Payer user not found")
+
     new_expense = models.Expense(
         title=expense.title,
         amount=expense.amount,
+        category=expense.category or "General",
         payer_id=expense.payer_id
     )
     db.add(new_expense)
+    db.commit()
+    db.refresh(new_expense)
+
+    all_users = db.query(models.User).all()
+    if not all_users:
+        return new_expense
+
+    # Handle Custom Splits vs Default Equal Split
+    if expense.splits and len(expense.splits) > 0:
+        for split_data in expense.splits:
+            split_record = models.ExpenseSplit(
+                expense_id=new_expense.id,
+                user_id=split_data.user_id,
+                amount_owed=split_data.amount_owed
+            )
+            db.add(split_record)
+    else:
+        equal_share = expense.amount / len(all_users)
+        for u in all_users:
+            split_record = models.ExpenseSplit(
+                expense_id=new_expense.id,
+                user_id=u.id,
+                amount_owed=equal_share
+            )
+            db.add(split_record)
+
     db.commit()
     db.refresh(new_expense)
     return new_expense
 
 @app.get("/expenses/", response_model=List[schemas.ExpenseResponse])
 def get_all_expenses(db: Session = Depends(get_db)):
-    expenses = db.query(models.Expense).all()
-    return expenses
-# ==================== SETTLEMENT ROUTES ====================
+    return db.query(models.Expense).all()
+
+# ==================== SETTLEMENT & BALANCE ROUTES ====================
 
 @app.get("/settlements/balances/", response_model=List[schemas.BalanceResponse])
 def calculate_balances(db: Session = Depends(get_db)):
     users = db.query(models.User).all()
-    expenses = db.query(models.Expense).all()
-
-    total_users = len(users)
-    if total_users == 0:
+    if not users:
         return []
 
-    # Calculate total spent across all expenses
-    total_spent = sum(exp.amount for exp in expenses)
-    fair_share = total_spent / total_users
+    net_balances = {u.id: 0.0 for u in users}
 
-    balances = []
-    for user in users:
-        # Sum expenses paid by this specific user
-        paid_by_user = sum(exp.amount for exp in expenses if exp.payer_id == user.id)
-        net_balance = paid_by_user - fair_share
+    # Add paid amounts
+    for u in users:
+        for exp in u.expenses_paid:
+            net_balances[u.id] += exp.amount
 
-        balances.append(
+    # Subtract owed amounts from splits
+    splits = db.query(models.ExpenseSplit).all()
+    for s in splits:
+        if s.user_id in net_balances:
+            net_balances[s.user_id] -= s.amount_owed
+
+    result = []
+    for u in users:
+        result.append(
             schemas.BalanceResponse(
-                user_id=user.id,
-                name=user.name,
-                net_balance=round(net_balance, 2)
+                user_id=u.id,
+                name=u.name,
+                net_balance=round(net_balances[u.id], 2)
             )
         )
+    return result
 
-    return balances
-@app.get("/settlements/simplify/", response_model=List[schemas.DebtSettlementResponse])
+@app.get("/settlements/simplify/", response_model=List[schemas.SettlementResponse])
 def simplify_debts(db: Session = Depends(get_db)):
-    users = db.query(models.User).all()
-    expenses = db.query(models.Expense).all()
-
-    total_users = len(users)
-    if total_users == 0:
+    balances_data = calculate_balances(db)
+    if not balances_data:
         return []
 
-    total_spent = sum(exp.amount for exp in expenses)
-    fair_share = total_spent / total_users
+    debtors = []
+    creditors = []
 
-    # Separate users into debtors (owes money) and creditors (is owed money)
-    debtors = []   # (user, amount_they_owe)
-    creditors = [] # (user, amount_they_are_owed)
-
-    for user in users:
-        paid = sum(exp.amount for exp in expenses if exp.payer_id == user.id)
-        net = paid - fair_share
-        if net < -0.01:
-            debtors.append({'user': user, 'amount': abs(net)})
-        elif net > 0.01:
-            creditors.append({'user': user, 'amount': net})
+    for b in balances_data:
+        if b.net_balance < -0.01:
+            debtors.append({'id': b.user_id, 'name': b.name, 'amount': -b.net_balance})
+        elif b.net_balance > 0.01:
+            creditors.append({'id': b.user_id, 'name': b.name, 'amount': b.net_balance})
 
     settlements = []
-    i, j = 0, 0
+    i = 0
+    j = 0
 
-    # Greedy settlement matching
     while i < len(debtors) and j < len(creditors):
         debtor = debtors[i]
         creditor = creditors[j]
 
-        settled_amount = min(debtor['amount'], creditor['amount'])
+        settle_amount = min(debtor['amount'], creditor['amount'])
+        
         settlements.append(
-            schemas.DebtSettlementResponse(
-                payer_id=debtor['user'].id,
-                payer_name=debtor['user'].name,
-                payee_id=creditor['user'].id,
-                payee_name=creditor['user'].name,
-                amount=round(settled_amount, 2)
+            schemas.SettlementResponse(
+                payer_id=debtor['id'],
+                payer_name=debtor['name'],
+                payee_id=creditor['id'],
+                payee_name=creditor['name'],
+                amount=round(settle_amount, 2)
             )
         )
 
-        debtor['amount'] -= settled_amount
-        creditor['amount'] -= settled_amount
+        debtor['amount'] -= settle_amount
+        creditor['amount'] -= settle_amount
 
         if debtor['amount'] < 0.01:
             i += 1

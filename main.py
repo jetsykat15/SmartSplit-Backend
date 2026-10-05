@@ -167,3 +167,26 @@ def simplify_debts(db: Session = Depends(get_db)):
             j += 1
 
     return settlements
+@app.post("/settlements/record/")
+def record_settlement(payer_id: int, payee_id: int, amount: float, db: Session = Depends(get_db)):
+    # Record a settlement payment as an expense where payer pays payee directly
+    settlement_expense = models.Expense(
+        title=f"Settlement: User {payer_id} -> User {payee_id}",
+        amount=amount,
+        category="Settlement",
+        payer_id=payer_id
+    )
+    db.add(settlement_expense)
+    db.commit()
+    db.refresh(settlement_expense)
+    
+    # Give all credit of this payment directly to payee
+    split = models.ExpenseSplit(
+        expense_id=settlement_expense.id,
+        user_id=payee_id,
+        amount=amount
+    )
+    db.add(split)
+    db.commit()
+    
+    return {"message": "Settlement recorded successfully"}

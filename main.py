@@ -190,3 +190,24 @@ def record_settlement(payer_id: int, payee_id: int, amount: float, db: Session =
     db.commit()
     
     return {"message": "Settlement recorded successfully"}
+@app.post("/subscriptions/", response_model=schemas.SubscriptionResponse)
+def create_subscription(sub: schemas.SubscriptionCreate, db: Session = Depends(get_db)):
+    # Verify payer exists
+    user = db.query(models.User).filter(models.User.id == sub.payer_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Payer user not found")
+    
+    db_sub = models.Subscription(
+        title=sub.title,
+        amount=sub.amount,
+        billing_cycle=sub.billing_cycle,
+        payer_id=sub.payer_id
+    )
+    db.add(db_sub)
+    db.commit()
+    db.refresh(db_sub)
+    return db_sub
+
+@app.get("/subscriptions/", response_model=List[schemas.SubscriptionResponse])
+def get_subscriptions(db: Session = Depends(get_db)):
+    return db.query(models.Subscription).all()

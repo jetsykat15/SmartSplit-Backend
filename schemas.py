@@ -55,3 +55,19 @@ class SettlementResponse(BaseModel):
     payee_id: int
     payee_name: str
     amount: float
+class SubscriptionCreate(BaseModel):
+    title: str
+    amount: float
+    billing_cycle: Optional[str] = "monthly"
+    payer_id: int
+
+class SubscriptionResponse(BaseModel):
+    id: int
+    title: str
+    amount: float
+    billing_cycle: str
+    payer_id: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True

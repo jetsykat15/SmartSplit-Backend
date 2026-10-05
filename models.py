@@ -36,3 +36,14 @@ class ExpenseSplit(Base):
 
     expense = relationship("Expense", back_populates="splits")
     user = relationship("User", back_populates="splits")
+class Subscription(Base):
+    __tablename__ = "subscriptions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String, index=True)
+    amount = Column(Float, nullable=False)
+    billing_cycle = Column(String, default="monthly")  # e.g., monthly, yearly
+    payer_id = Column(Integer, ForeignKey("users.id"))
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    payer = relationship("User", back_populates="subscriptions")
